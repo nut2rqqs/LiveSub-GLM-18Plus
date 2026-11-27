@@ -4302,3 +4302,77 @@ class GeminiClient {
         }
 }
 FILE_EOF
+
+# Build #8: Gemini API settings UI, encrypted persistence and connection test
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/storage/SecurePrefs.kt')
+s=p.read_text()
+s=s.replace('private const val KEY_NUMES = "numes_api_key"', 'private const val KEY_NUMES = "numes_api_key"\\n        private const val KEY_GEMINI = "gemini_api_key"\\n        private const val KEY_GEMINI_ENABLED = "gemini_enabled"')
+s=s.replace('    var modelName: String', '    var geminiApiKey: String\\n        get() = prefs.getString(KEY_GEMINI, null)?.orEmpty()\\n        set(value) = prefs.edit().putString(KEY_GEMINI, value.trim()).apply()\\n\\n    var geminiEnabled: Boolean\\n        get() = prefs.getBoolean(KEY_GEMINI_ENABLED, false)\\n        set(value) = prefs.edit().putBoolean(KEY_GEMINI_ENABLED, value).apply()\\n\\n    var modelName: String')
+p.write_text(s)
+
+p=Path('app/src/main/res/layout/activity_main.xml')
+s=p.read_text()
+anchor='''        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:orientation="horizontal">'''
+addition='''        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Gemini (optional)"
+            android:textStyle="bold"
+            android:textColor="@color/primary_accent"
+            android:textSize="16sp" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchGeminiEnabled"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="เปิดใช้ Gemini" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Gemini API Key"
+            app:endIconMode="password_toggle">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etGeminiKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textPassword"
+                android:singleLine="true" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTestGemini"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="ทดสอบ Gemini Key" />
+
+        <TextView
+            android:id="@+id/tvGeminiStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gemini: ยังไม่ได้ทดสอบ"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:padding="8dp" />
+
+'''
+if anchor not in s: raise SystemExit('layout anchor missing')
+s=s.replace(anchor,addition+anchor,1)
+p.write_text(s)
+
+p=Path('app/src/main/java/com/livesub/glm/MainActivity.kt')
+s=p.read_text()
+s=s.replace('import com.livesub.glm.network.ApiConnectionTester','import com.livesub.glm.network.ApiConnectionTester\\nimport com.livesub.glm.network.GeminiClient')
+s=s.replace('        binding.etModelName.setText(prefs.modelName)', '        binding.etModelName.setText(prefs.modelName)\\n        binding.etGeminiKey.setText(prefs.geminiApiKey)\\n        binding.switchGeminiEnabled.isChecked = prefs.geminiEnabled\\n        binding.switchGeminiEnabled.setOnCheckedChangeListener { _, checked -> prefs.geminiEnabled = checked }\\n        binding.btnTestGemini.setOnClickListener {\\n            val key = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\\n            prefs.geminiApiKey = key\\n            binding.tvGeminiStatus.text = "กำลังทดสอบ Gemini..."\\n            lifecycleScope.launch {\\n                val r = GeminiClient().testKey(key)\\n                binding.tvGeminiStatus.text = if (r.ok) "Gemini: CONNECTED (HTTP ${r.code}) — ${r.text}" else "Gemini: FAILED (HTTP ${r.code}) — ${r.text}"\\n            }\\n        }')
+s=s.replace('        prefs.groqApiKey = groq', '        prefs.groqApiKey = groq\\n        prefs.geminiApiKey = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\\n        prefs.geminiEnabled = binding.switchGeminiEnabled.isChecked')
+p.write_text(s)
+PY
