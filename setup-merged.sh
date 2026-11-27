@@ -3270,3 +3270,124 @@ p=Path('app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt')
 s=p.read_text().replace('\\\\n        val payload', '\\n        val payload')
 p.write_text(s)
 PY
+
+# Repair generated Kotlin literals and overlay source (idempotent)
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/audio/InternalAudioVadRecorder.kt')
+s=p.read_text()
+s=s.replace('growth\\\\n    private val wavChannel', 'growth\\n    private val wavChannel')
+s=s.replace('growth.\\\\n    private val wavChannel', 'growth.\\n    private val wavChannel')
+p.write_text(s)
+p=Path('app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt')
+s=p.read_text().replace('\\\\n        val payload', '\\n        val payload')
+p.write_text(s)
+PY
+cat << 'OVERLAY_EOF' > app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt
+package com.livesub.glm.overlay
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
+import android.util.TypedValue
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.WindowManager
+import com.livesub.glm.R
+import com.livesub.glm.databinding.OverlaySubtitleBinding
+import com.livesub.glm.storage.SecurePrefs
+import kotlin.math.abs
+
+class FloatingSubtitleOverlay(
+    context: Context,
+    private val prefs: SecurePrefs,
+    private val onCloseRequested: () -> Unit,
+    private val onRestartRequested: () -> Unit
+) {
+    private val appContext = context.applicationContext
+    private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val handler = Handler(Looper.getMainLooper())
+    private var binding: OverlaySubtitleBinding? = null
+    private var layoutParams: WindowManager.LayoutParams? = null
+    private var currentFontSp = prefs.fontSizeSp
+    private var isAttached = false
+
+    @SuppressLint("ClickableViewAccessibility")
+    fun show() {
+        handler.post {
+            if (isAttached) return@post
+            val themed = ContextThemeWrapper(appContext, R.style.Theme_LiveSubGLM)
+            val vb = OverlaySubtitleBinding.inflate(LayoutInflater.from(themed))
+            binding = vb
+            val width = (appContext.resources.displayMetrics.widthPixels * 0.90f).toInt()
+            val params = WindowManager.LayoutParams(
+                width, WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.LEFT
+                x = (appContext.resources.displayMetrics.widthPixels - width) / 2
+                y = (appContext.resources.displayMetrics.heightPixels * 0.68f).toInt()
+            }
+            layoutParams = params
+            applyFontSize(currentFontSp)
+            applyOverlayAlpha(prefs.overlayAlpha)
+            applyTextColor(prefs.textColorIndex)
+            vb.btnBgMinus.setOnClickListener { prefs.overlayAlpha = (prefs.overlayAlpha - 15).coerceAtLeast(80); applyOverlayAlpha(prefs.overlayAlpha) }
+            vb.btnBgPlus.setOnClickListener { prefs.overlayAlpha = (prefs.overlayAlpha + 15).coerceAtMost(255); applyOverlayAlpha(prefs.overlayAlpha) }
+            vb.btnTextColor.setOnClickListener { prefs.textColorIndex = (prefs.textColorIndex + 1) % 5; applyTextColor(prefs.textColorIndex) }
+            vb.btnRestartTranslation.setOnClickListener { onRestartRequested() }
+            vb.btnFontMinus.setOnClickListener { currentFontSp = (currentFontSp - 2f).coerceAtLeast(14f); prefs.fontSizeSp = currentFontSp; applyFontSize(currentFontSp) }
+            vb.btnFontPlus.setOnClickListener { currentFontSp = (currentFontSp + 2f).coerceAtMost(36f); prefs.fontSizeSp = currentFontSp; applyFontSize(currentFontSp) }
+            vb.btnCloseOverlay.setOnClickListener { onCloseRequested() }
+
+            var startX = 0; var startY = 0; var touchX = 0f; var touchY = 0f; var moved = false
+            vb.overlayRoot.setOnTouchListener { _, e ->
+                val lp = layoutParams ?: return@setOnTouchListener false
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { startX = lp.x; startY = lp.y; touchX = e.rawX; touchY = e.rawY; moved = false; true }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (e.rawX - touchX).toInt(); val dy = (e.rawY - touchY).toInt()
+                        if (abs(dx) > 6 || abs(dy) > 6) moved = true
+                        if (moved && isAttached) { lp.x = startX + dx; lp.y = startY + dy; try { windowManager.updateViewLayout(vb.root, lp) } catch (_: Exception) {} }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
+                    else -> false
+                }
+            }
+            try { windowManager.addView(vb.root, params); isAttached = true } catch (_: Exception) { isAttached = false }
+        }
+    }
+
+    fun updateStatus(text: String) { handler.post { binding?.tvStatusBadge?.text = text } }
+    fun updateSourceText(text: String) { handler.post { binding?.tvSourceText?.text = text } }
+    fun updateTranslatedText(text: String) { handler.post { binding?.tvSubtitleThai?.text = text } }
+
+    fun hide() {
+        handler.post {
+            val vb = binding
+            if (isAttached && vb != null) try { windowManager.removeView(vb.root) } catch (_: Exception) {}
+            isAttached = false; binding = null; layoutParams = null
+        }
+    }
+
+    private fun applyOverlayAlpha(alpha: Int) { binding?.overlayRoot?.setBackgroundColor(android.graphics.Color.argb(alpha, 13, 15, 20)) }
+    private fun applyTextColor(index: Int) {
+        val colors = intArrayOf(android.graphics.Color.WHITE, android.graphics.Color.YELLOW, android.graphics.Color.CYAN, android.graphics.Color.GREEN, android.graphics.Color.MAGENTA)
+        binding?.tvSubtitleThai?.setTextColor(colors[index.coerceIn(0, 4)])
+    }
+    private fun applyFontSize(size: Float) {
+        binding?.let { vb ->
+            vb.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
+            vb.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, (size * 0.65f).coerceAtLeast(11f))
+            vb.tvStatusBadge.text = "LiveSub 18+ (${size.toInt()}sp)"
+        }
+    }
+}
+OVERLAY_EOF
