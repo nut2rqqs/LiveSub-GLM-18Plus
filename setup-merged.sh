@@ -880,12 +880,16 @@ class FloatingSubtitleOverlay(
                         }
                         true
                     }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        dragging = false
+                        true
+                    }
                     else -> false
                 }
             }
 
             try {
-                windowManager.addView(vb.root, params)
+                windowManager.addView(vb.root, params
                 isAttached = true
             } catch (_: Exception) {
                 isAttached = false
