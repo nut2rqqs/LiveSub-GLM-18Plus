@@ -889,7 +889,7 @@ class FloatingSubtitleOverlay(
             }
 
             try {
-                windowManager.addView(vb.root, params
+                windowManager.addView(vb.root, params)
                 isAttached = true
             } catch (_: Exception) {
                 isAttached = false
