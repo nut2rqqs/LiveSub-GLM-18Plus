@@ -2,8 +2,8 @@ name: Bootstrap and Build APK
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'setup-merged.sh'
+    branches:
+      - main
 jobs:
   build:
     runs-on: ubuntu-latest
