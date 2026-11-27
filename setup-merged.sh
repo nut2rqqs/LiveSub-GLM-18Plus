@@ -4424,3 +4424,5 @@ if 'import com.livesub.glm.network.GeminiClient' not in s:
     s=s.replace('import com.livesub.glm.network.NumesTranslationClient','import com.livesub.glm.network.NumesTranslationClient\nimport com.livesub.glm.network.GeminiClient')
 p.write_text(s)
 PY
+
+# CI retry trigger: rebuild generated Gemini routing and settings sources after newline repair.
