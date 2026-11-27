@@ -93,3 +93,21 @@ if "onDebug = { msg -> overlay?.updateStatus(msg) }" not in ss:
     raise SystemExit("PATCH_FAIL: recorder debug callback anchor missing")
 service.write_text(ss)
 print("PATCH_OK: VAD meter, lower threshold, segment emission status")
+
+# Instrument actual HTTP dispatch and response, not key-test success.
+g = Path("app/src/main/java/com/livesub/glm/network/GroqWhisperClient.kt")
+gs = g.read_text()
+gs = gs.replace("class GroqWhisperClient {", "class GroqWhisperClient(private val onDebug: (String) -> Unit = {}) {")
+anchor = "                httpClient.newCall(request).execute().use { response ->"
+if anchor not in gs: raise SystemExit("PATCH_FAIL: Groq execute anchor missing")
+gs = gs.replace(anchor, '                onDebug("Groq request dispatch · model $WHISPER_MODEL · WAV ${wavBytes.size / 1024} KB")\n'+anchor)
+anchor2 = "                    val rawBody = response.body?.string().orEmpty()"
+if anchor2 not in gs: raise SystemExit("PATCH_FAIL: response body anchor missing")
+gs = gs.replace(anchor2, anchor2+'\n                    onDebug("Groq HTTP ${response.code} · response ${rawBody.length} chars")')
+g.write_text(gs)
+
+svc = Path("app/src/main/java/com/livesub/glm/service/LiveSubCaptureService.kt")
+ss = svc.read_text()
+ss = ss.replace("private val groqClient = GroqWhisperClient()", "private val groqClient = GroqWhisperClient { msg -> overlay?.updateStatus(msg) }")
+svc.write_text(ss)
+print("PATCH_OK: Groq dispatch + HTTP response diagnostics")
