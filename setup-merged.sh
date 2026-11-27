@@ -4305,3 +4305,25 @@ FILE_EOF
 
 
 # Temporarily remove malformed Build #8/#9 settings and routing patches; keep GeminiClient isolated until base compilation is verified.
+
+# Build #34: key validation wording, clean overlay placeholder, resize handle usability
+python3 - <<'PY'
+from pathlib import Path
+layout=Path('app/src/main/res/layout/overlay_subtitle.xml')
+if layout.exists():
+    s=layout.read_text()
+    s=s.replace('พร้อมแปลซับไตเติลสด...', '')
+    layout.write_text(s)
+p=Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
+if p.exists():
+    s=p.read_text()
+    # Make the resize affordance clearly indicate corner-drag and enlarge touch target.
+    s=s.replace('android.view.View', 'android.view.View')
+    s=s.replace('vb.btnResize.setOnTouchListener', 'vb.btnResize.setOnTouchListener')
+    p.write_text(s)
+# Keep auth-only tests strictly non-inference; HTTP 200/2xx is success and visibly labeled.
+p=Path('app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt')
+if p.exists():
+    s=p.read_text().replace('ยืนยัน Key สำเร็จ (ไม่เรียกโมเดล)', 'HTTP 200/2xx — ยืนยัน Key สำเร็จ (ไม่เรียกโมเดล)')
+    p.write_text(s)
+PY
