@@ -319,7 +319,7 @@ class InternalAudioVadRecorder(
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
     private var consumerJob: Job? = null
-    private val wavChannel = Channel<ByteArray>(capacity = 6)
+    // Bounded backlog: retain queued chunks without unbounded memory growth.\n    private val wavChannel = Channel<ByteArray>(capacity = 12)
 
     @SuppressLint("MissingPermission")
     fun start() {
@@ -415,7 +415,7 @@ class InternalAudioVadRecorder(
                         if (silenceDurationMs >= MAX_SILENCE_MS || speechDurationMs >= MAX_SPEECH_MS) {
                             if (voicedFramesMs >= MIN_VALID_VOICE_MS) {
                                 val wavBytes = WavEncoder.pcmToWavBytes(activeSpeechStream.toByteArray())
-                                wavChannel.trySend(wavBytes)
+                                wavChannel.send(wavBytes)
                             }
                             activeSpeechStream.reset()
                             isSpeaking = false
