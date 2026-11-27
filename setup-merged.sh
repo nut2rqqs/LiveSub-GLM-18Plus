@@ -3239,3 +3239,23 @@ p.write_text(s)
 PY
 
 echo "Files written. GitHub Actions workflow will build APK."
+
+# Build repair patch: fix escaped newlines and mismatched overlay view IDs
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/audio/InternalAudioVadRecorder.kt')
+s=p.read_text().replace('// Bounded backlog: retain queued chunks without unbounded memory growth\\\\n    private val wavChannel', '// Bounded backlog: retain queued chunks without unbounded memory growth\n    private val wavChannel')
+p.write_text(s)
+
+p=Path('app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt')
+s=p.read_text().replace('\\\\n        val payload', '\\n        val payload')
+p.write_text(s)
+
+p=Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
+s=p.read_text()
+# remove erroneous literal escaped multi-line code fragments, including controlBar and resize references unsupported by current XML
+s=s.replace('    private var isAttached = false\\\\n    private var initialResizeX=0f; private var initialResizeY=0f; private var initialResizeWidth=0; private var initialResizeHeight=0\\\\n    private val autoHideHandler = Handler(Looper.getMainLooper())\\\\n    private val autoHideControls = Runnable { binding?.controlBar?.visibility = View.GONE }','    private var isAttached = false')
+s=s.replace('            applyFontSize(currentFontSp)\\\\n            vb.controlBar.setOnClickListener { autoHideHandler.removeCallbacks(autoHideControls); vb.controlBar.visibility = View.VISIBLE; autoHideHandler.postDelayed(autoHideControls, 3000) }\\\\n            vb.overlayRoot.setOnClickListener { vb.controlBar.visibility = View.VISIBLE; autoHideHandler.removeCallbacks(autoHideControls); autoHideHandler.postDelayed(autoHideControls, 3000) }\\\\n            vb.btnResize.setOnTouchListener { _, ev -> val lp = layoutParams ?: return@setOnTouchListener false; when(ev.actionMasked){ MotionEvent.ACTION_DOWN -> { initialResizeX=ev.rawX; initialResizeY=ev.rawY; initialResizeWidth=lp.width; initialResizeHeight=lp.height; true }; MotionEvent.ACTION_MOVE -> { lp.width=(initialResizeWidth+(ev.rawX-initialResizeX).toInt()).coerceIn(180, appContext.resources.displayMetrics.widthPixels); lp.height=(initialResizeHeight+(ev.rawY-initialResizeY).toInt()).coerceAtLeast(120); try { windowManager.updateViewLayout(vb.root,lp) } catch (_:Exception){}; true }; else -> true } }\\\\n            autoHideHandler.postDelayed(autoHideControls, 3000)','            applyFontSize(currentFontSp)')
+s=s.replace('                    autoHideHandler.removeCallbacks(autoHideControls)\\\\n                windowManager.removeView(vb.root)','                windowManager.removeView(vb.root)')
+p.write_text(s)
+PY
