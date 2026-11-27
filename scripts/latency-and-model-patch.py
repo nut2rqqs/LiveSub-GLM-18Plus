@@ -253,3 +253,80 @@ edit(nc, "if (cleanPartial.isNotEmpty()) onStreamingUpdate(cleanPartial)",
      "                                    onStreamingUpdate(cleanPartial)\n"
      "                                }")
 print("PATCH_OK: lighter translation request + throttled streaming UI")
+
+# ------------------------------------------- real model test for the Test button
+tester = BASE / "network" / "ApiConnectionTester.kt"
+edit(tester, "suspend fun testGroq(key: String): ApiTestResult = withContext(Dispatchers.IO) {",
+     "private suspend fun testGroqKey(key: String): ApiTestResult = withContext(Dispatchers.IO) {")
+edit(tester, "suspend fun testNumes(key: String, model: String): ApiTestResult = withContext(Dispatchers.IO) {",
+     "private suspend fun testNumesKey(key: String): ApiTestResult = withContext(Dispatchers.IO) {")
+edit(tester, "import okhttp3.Request\n",
+     "import okhttp3.MediaType.Companion.toMediaType\n"
+     "import okhttp3.MultipartBody\n"
+     "import okhttp3.Request\n"
+     "import okhttp3.RequestBody.Companion.toRequestBody\n")
+
+new_tests = '''
+    // Key check first, then a real (tiny) call to the model so wrong model names show up here.
+    suspend fun testGroq(key: String): ApiTestResult {
+        val keyResult = testGroqKey(key)
+        if (!keyResult.ok) return keyResult
+        return withContext(Dispatchers.IO) {
+            try {
+                val wav = com.livesub.glm.audio.WavEncoder.pcmToWavBytes(ByteArray(16000))
+                val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+                    .addFormDataPart("file", "test.wav", wav.toRequestBody("audio/wav".toMediaType()))
+                    .addFormDataPart("model", "whisper-large-v3-turbo")
+                    .addFormDataPart("response_format", "json")
+                    .build()
+                val req = Request.Builder()
+                    .url("https://api.groq.com/openai/v1/audio/transcriptions")
+                    .header("Authorization", "Bearer ${key.trim()}")
+                    .post(body).build()
+                client.newCall(req).execute().use { r ->
+                    val txt = r.body?.string().orEmpty()
+                    if (r.isSuccessful) ApiTestResult(true, r.code, "เรียกโมเดล whisper-large-v3-turbo สำเร็จ")
+                    else ApiTestResult(false, r.code, txt.take(120).ifBlank { "HTTP error" })
+                }
+            } catch (e: Exception) {
+                ApiTestResult(false, -1, e.javaClass.simpleName + ": " + (e.message ?: "network error").take(100))
+            }
+        }
+    }
+
+    suspend fun testNumes(key: String, model: String): ApiTestResult {
+        val keyResult = testNumesKey(key)
+        if (!keyResult.ok) return keyResult
+        return withContext(Dispatchers.IO) {
+            try {
+                val payload = com.google.gson.JsonObject().apply {
+                    addProperty("model", model)
+                    add("messages", com.google.gson.JsonArray().apply {
+                        add(com.google.gson.JsonObject().apply {
+                            addProperty("role", "user")
+                            addProperty("content", "hi")
+                        })
+                    })
+                    addProperty("max_tokens", 1)
+                    addProperty("stream", false)
+                }
+                val req = Request.Builder()
+                    .url("https://api.numes.ai/api/v1/chat/completions")
+                    .header("Authorization", "Bearer ${key.trim()}")
+                    .header("Content-Type", "application/json")
+                    .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
+                client.newCall(req).execute().use { r ->
+                    val txt = r.body?.string().orEmpty()
+                    if (r.isSuccessful) ApiTestResult(true, r.code, "เรียกโมเดล $model สำเร็จ")
+                    else ApiTestResult(false, r.code, txt.take(120).ifBlank { "HTTP error" })
+                }
+            } catch (e: Exception) {
+                ApiTestResult(false, -1, e.javaClass.simpleName + ": " + (e.message ?: "network error").take(100))
+            }
+        }
+    }
+
+    private fun request('''
+edit(tester, "\n    private fun request(", new_tests)
+print("PATCH_OK: Test button now calls the real models")
