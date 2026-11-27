@@ -4233,3 +4233,72 @@ class FloatingSubtitleOverlay(context: Context, private val prefs: SecurePrefs, 
 SUBTITLE_KOTLIN_EOF
 
 # CI rebuild trigger: validate latest overlay redesign APK.
+
+# Build #7: Gemini API module (REST, separate API key)
+mkdir -p app/src/main/java/com/livesub/glm/network
+cat << 'FILE_EOF' > app/src/main/java/com/livesub/glm/network/GeminiClient.kt
+package com.livesub.glm.network
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+data class GeminiResult(val ok: Boolean, val text: String, val code: Int)
+
+class GeminiClient {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
+        .build()
+
+    suspend fun translate(text: String, apiKey: String, model: String = "gemini-2.5-flash"): Result<String> =
+        withContext(Dispatchers.IO) {
+            if (apiKey.isBlank()) return@withContext Result.failure(IllegalArgumentException("Gemini API Key ว่าง"))
+            if (text.isBlank()) return@withContext Result.failure(IllegalArgumentException("ข้อความต้นฉบับว่าง"))
+            try {
+                val body = JSONObject().put("contents", org.json.JSONArray().put(
+                    JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text",
+                        "Translate this dialogue into natural Thai subtitles, preserve meaning, context, tone and names. Output only Thai translation.\\n\\n$text")))
+                )).put("generationConfig", JSONObject().put("temperature", 0.55).put("maxOutputTokens", 512))
+                val req = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")
+                    .header("x-goog-api-key", apiKey.trim())
+                    .post(body.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+                client.newCall(req).execute().use { response ->
+                    val raw = response.body?.string().orEmpty()
+                    if (!response.isSuccessful) return@withContext Result.failure(
+                        IllegalStateException("Gemini HTTP ${response.code}: ${raw.take(200)}"))
+                    val parsed = JSONObject(raw)
+                    val candidates = parsed.optJSONArray("candidates")
+                    val parts = candidates?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+                    val output = parts?.optJSONObject(0)?.optString("text").orEmpty().trim()
+                    if (output.isEmpty()) Result.failure(IllegalStateException("Gemini returned empty response"))
+                    else Result.success(output)
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun testKey(apiKey: String, model: String = "gemini-2.5-flash"): GeminiResult =
+        withContext(Dispatchers.IO) {
+            if (apiKey.isBlank()) return@withContext GeminiResult(false, "API Key ว่าง", 0)
+            try {
+                val req = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/$model")
+                    .header("x-goog-api-key", apiKey.trim()).get().build()
+                client.newCall(req).execute().use { response ->
+                    GeminiResult(response.isSuccessful, if (response.isSuccessful) "Key และสิทธิ์โมเดลตอบสนอง" else response.body?.string()?.take(180).orEmpty(), response.code)
+                }
+            } catch (e: Exception) {
+                GeminiResult(false, e.message ?: e.javaClass.simpleName, -1)
+            }
+        }
+}
+FILE_EOF
