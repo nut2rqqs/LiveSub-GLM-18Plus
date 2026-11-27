@@ -1702,4 +1702,38 @@ s=s.replace('        binding.btnStartCapture.setOnClickListener {','''        bi
 p.write_text(s)
 PY
 
+
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/res/layout/activity_main.xml')
+s=p.read_text()
+anchor='''        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:orientation="horizontal">'''
+insert='''        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTestApis"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="16dp"
+            android:text="Test API Connection (Groq + Numes)" />
+
+        <TextView
+            android:id="@+id/tvApiTestResults"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_overlay_card"
+            android:padding="10dp"
+            android:text="ยังไม่ได้ทดสอบ API"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+'''
+if anchor not in s: raise SystemExit('XML insertion anchor missing')
+s=s.replace(anchor,insert+anchor,1)
+p.write_text(s)
+PY
+
 echo "Files written. GitHub Actions workflow will build APK."
