@@ -13,6 +13,8 @@ jobs:
         run: bash setup-merged.sh
       - name: Patch capture diagnostics
         run: python3 scripts/diagnostic-patch.py
+      - name: Patch latency and model picker
+        run: python3 scripts/latency-and-model-patch.py
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
