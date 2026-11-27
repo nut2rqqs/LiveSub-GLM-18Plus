@@ -1,0 +1,38 @@
+name: Bootstrap and Build APK
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'LiveSub-GLM-18Plus-bundle.zip'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract project bundle
+        run: |
+          unzip -o LiveSub-GLM-18Plus-bundle.zip -d extracted
+          cp -a extracted/. .
+          rm -rf extracted LiveSub-GLM-18Plus-bundle.zip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build debug APK
+        run: |
+          chmod +x setup-merged.sh || true
+          bash -n setup-merged.sh || true
+          gradle assembleDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+      - name: Commit extracted source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'Extract project and build APK' || true
+          git push
