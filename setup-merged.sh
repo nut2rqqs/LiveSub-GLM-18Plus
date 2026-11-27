@@ -4308,8 +4308,8 @@ python3 - <<'PY'
 from pathlib import Path
 p=Path('app/src/main/java/com/livesub/glm/storage/SecurePrefs.kt')
 s=p.read_text()
-s=s.replace('private const val KEY_NUMES = "numes_api_key"', 'private const val KEY_NUMES = "numes_api_key"\\n        private const val KEY_GEMINI = "gemini_api_key"\\n        private const val KEY_GEMINI_ENABLED = "gemini_enabled"')
-s=s.replace('    var modelName: String', '    var geminiApiKey: String\\n        get() = prefs.getString(KEY_GEMINI, null)?.orEmpty()\\n        set(value) = prefs.edit().putString(KEY_GEMINI, value.trim()).apply()\\n\\n    var geminiEnabled: Boolean\\n        get() = prefs.getBoolean(KEY_GEMINI_ENABLED, false)\\n        set(value) = prefs.edit().putBoolean(KEY_GEMINI_ENABLED, value).apply()\\n\\n    var modelName: String')
+s=s.replace('private const val KEY_NUMES = "numes_api_key"', 'private const val KEY_NUMES = "numes_api_key"\n        private const val KEY_GEMINI = "gemini_api_key"\n        private const val KEY_GEMINI_ENABLED = "gemini_enabled"')
+s=s.replace('    var modelName: String', '    var geminiApiKey: String\n        get() = prefs.getString(KEY_GEMINI, null)?.orEmpty()\n        set(value) = prefs.edit().putString(KEY_GEMINI, value.trim()).apply()\n\n    var geminiEnabled: Boolean\n        get() = prefs.getBoolean(KEY_GEMINI_ENABLED, false)\n        set(value) = prefs.edit().putBoolean(KEY_GEMINI_ENABLED, value).apply()\n\n    var modelName: String')
 p.write_text(s)
 
 p=Path('app/src/main/res/layout/activity_main.xml')
@@ -4371,9 +4371,9 @@ p.write_text(s)
 
 p=Path('app/src/main/java/com/livesub/glm/MainActivity.kt')
 s=p.read_text()
-s=s.replace('import com.livesub.glm.network.ApiConnectionTester','import com.livesub.glm.network.ApiConnectionTester\\nimport com.livesub.glm.network.GeminiClient')
-s=s.replace('        binding.etModelName.setText(prefs.modelName)', '        binding.etModelName.setText(prefs.modelName)\\n        binding.etGeminiKey.setText(prefs.geminiApiKey)\\n        binding.switchGeminiEnabled.isChecked = prefs.geminiEnabled\\n        binding.switchGeminiEnabled.setOnCheckedChangeListener { _, checked -> prefs.geminiEnabled = checked }\\n        binding.btnTestGemini.setOnClickListener {\\n            val key = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\\n            prefs.geminiApiKey = key\\n            binding.tvGeminiStatus.text = "กำลังทดสอบ Gemini..."\\n            lifecycleScope.launch {\\n                val r = GeminiClient().testKey(key)\\n                binding.tvGeminiStatus.text = if (r.ok) "Gemini: CONNECTED (HTTP ${r.code}) — ${r.text}" else "Gemini: FAILED (HTTP ${r.code}) — ${r.text}"\\n            }\\n        }')
-s=s.replace('        prefs.groqApiKey = groq', '        prefs.groqApiKey = groq\\n        prefs.geminiApiKey = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\\n        prefs.geminiEnabled = binding.switchGeminiEnabled.isChecked')
+s=s.replace('import com.livesub.glm.network.ApiConnectionTester','import com.livesub.glm.network.ApiConnectionTester\nimport com.livesub.glm.network.GeminiClient')
+s=s.replace('        binding.etModelName.setText(prefs.modelName)', '        binding.etModelName.setText(prefs.modelName)\n        binding.etGeminiKey.setText(prefs.geminiApiKey)\n        binding.switchGeminiEnabled.isChecked = prefs.geminiEnabled\n        binding.switchGeminiEnabled.setOnCheckedChangeListener { _, checked -> prefs.geminiEnabled = checked }\n        binding.btnTestGemini.setOnClickListener {\n            val key = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\n            prefs.geminiApiKey = key\n            binding.tvGeminiStatus.text = "กำลังทดสอบ Gemini..."\n            lifecycleScope.launch {\n                val r = GeminiClient().testKey(key)\n                binding.tvGeminiStatus.text = if (r.ok) "Gemini: CONNECTED (HTTP ${r.code}) — ${r.text}" else "Gemini: FAILED (HTTP ${r.code}) — ${r.text}"\n            }\n        }')
+s=s.replace('        prefs.groqApiKey = groq', '        prefs.groqApiKey = groq\n        prefs.geminiApiKey = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\n        prefs.geminiEnabled = binding.switchGeminiEnabled.isChecked')
 p.write_text(s)
 PY
 
@@ -4421,6 +4421,6 @@ new='''                if (prefs.geminiEnabled) {
 if old not in s: raise SystemExit('translation routing anchor not found')
 s=s.replace(old,new,1)
 if 'import com.livesub.glm.network.GeminiClient' not in s:
-    s=s.replace('import com.livesub.glm.network.NumesTranslationClient','import com.livesub.glm.network.NumesTranslationClient\\nimport com.livesub.glm.network.GeminiClient')
+    s=s.replace('import com.livesub.glm.network.NumesTranslationClient','import com.livesub.glm.network.NumesTranslationClient\nimport com.livesub.glm.network.GeminiClient')
 p.write_text(s)
 PY
