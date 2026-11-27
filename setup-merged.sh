@@ -3298,3 +3298,14 @@ s=p.read_text()
 s=s.replace('\\\\n', '\\n')
 p.write_text(s)
 PY
+
+# Build #19 targeted source normalization for overlay structural escapes.
+python3 - <<'PY'
+from pathlib import Path
+p = Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
+s = p.read_text()
+# Convert literal escaped line breaks left in Kotlin source (both escape-depth variants).
+s = s.replace('\\\\n', '\\n')
+s = s.replace('\\n', '\n')
+p.write_text(s)
+PY
