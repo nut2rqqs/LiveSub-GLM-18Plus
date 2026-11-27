@@ -3391,3 +3391,16 @@ class FloatingSubtitleOverlay(
     }
 }
 OVERLAY_EOF
+
+# Build #22 repair: split literal escaped newline sequences in generated Kotlin
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/audio/InternalAudioVadRecorder.kt')
+s=p.read_text()
+s=s.replace(r'// Bounded backlog: retain queued chunks without unbounded memory growth.\n    private val wavChannel', '// Bounded backlog: retain queued chunks without unbounded memory growth.\n    private val wavChannel')
+p.write_text(s)
+p=Path('app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt')
+s=p.read_text()
+s=s.replace(r'.replace("\\", "\\\\").replace("\"", "\\\"")\n        val payload', r'.replace("\\", "\\\\").replace("\"", "\\\"")' + '\n' + '        val payload')
+p.write_text(s)
+PY
