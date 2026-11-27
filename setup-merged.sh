@@ -4228,6 +4228,6 @@ class FloatingSubtitleOverlay(context: Context, private val prefs: SecurePrefs, 
  fun hide(){handler.post{handler.removeCallbacks(autoHide);val b=binding;if(attached&&b!=null)try{wm.removeView(b.root)}catch(_:Exception){};attached=false;binding=null;lp=null}}
  private fun applyAlpha(a:Int){binding?.overlayRoot?.setBackgroundColor(android.graphics.Color.argb(a,13,15,20))}
  private fun applyColor(i:Int){val c=intArrayOf(android.graphics.Color.WHITE,android.graphics.Color.YELLOW,android.graphics.Color.CYAN,android.graphics.Color.GREEN,android.graphics.Color.MAGENTA);binding?.tvSubtitleThai?.setTextColor(c[i.coerceIn(0,4)])}
- private fun applyFont(s:Float){binding?.let{it.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP,s);it.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP,(s*.65f).coerceAtLeast(11f);it.tvStatusBadge.text="LiveSub (${s.toInt()}sp)"}}
+ private fun applyFont(s:Float){binding?.let{it.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP,s);it.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP,(s*.65f).coerceAtLeast(11f));it.tvStatusBadge.text="LiveSub (${s.toInt()}sp)"}}
 }
 SUBTITLE_KOTLIN_EOF
