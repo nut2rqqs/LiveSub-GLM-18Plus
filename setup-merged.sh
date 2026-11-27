@@ -1648,7 +1648,7 @@ object ApiConnectionTester {
     }
 
     suspend fun testNumes(key: String, model: String): ApiTestResult = withContext(Dispatchers.IO) {
-        val payload = """{"model":"$model","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":5,"stream":false}"""
+        val safeModel = model.replace("\\", "\\\\").replace("\"", "\\\"")\n        val payload = """{"model":"$safeModel","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":5,"stream":false}"""
         request("https://api.numes.ai/api/v1/chat/completions", key, payload)
     }
 
