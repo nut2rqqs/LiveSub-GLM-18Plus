@@ -1693,7 +1693,7 @@ s=s.replace('        binding.btnStartCapture.setOnClickListener {','''        bi
                 val g = ApiConnectionTester.testGroq(groq)
                 val n = ApiConnectionTester.testNumes(numes, model)
                 binding.tvApiTestResults.text =
-                    "Groq: ${if (g.ok) "CONNECTED" else "FAILED"} (HTTP ${g.code}) — ${g.message}\n" +
+                    "Groq: ${if (g.ok) "CONNECTED" else "FAILED"} (HTTP ${g.code}) — ${g.message}\\n" +
                     "Numes: ${if (n.ok) "CONNECTED" else "FAILED"} (HTTP ${n.code}) — ${n.message}"
             }
         }
