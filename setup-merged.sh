@@ -1441,6 +1441,754 @@ FILE_EOF
 mkdir -p "$(dirname app/src/main/res/layout/overlay_subtitle.xml)"
 cat << 'FILE_EOF' > app/src/main/res/layout/overlay_subtitle.xml
 <?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/overlayRoot" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/bg_overlay_card" android:orientation="vertical" android:padding="6dp">
+ <LinearLayout android:id="@+id/controlBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:orientation="horizontal">
+   <TextView android:id="@+id/tvStatusBadge" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="LiveSub" android:textColor="@color/text_secondary" android:textSize="11sp"/>
+   <TextView android:id="@+id/btnBgMinus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="◐−" android:padding="8dp" android:textColor="@color/text_primary"/>
+   <TextView android:id="@+id/btnBgPlus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="◐+" android:padding="8dp" android:textColor="@color/text_primary"/>
+   <TextView android:id="@+id/btnTextColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="●" android:padding="8dp" android:textColor="#FF5B88"/>
+   <TextView android:id="@+id/btnCloseOverlay" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="✕" android:padding="8dp" android:textColor="#FF6B8B"/>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:orientation="horizontal">
+   <TextView android:id="@+id/btnFontMinus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="A−" android:padding="8dp" android:textColor="@color/text_primary"/>
+   <TextView android:id="@+id/btnFontPlus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="A+" android:padding="8dp" android:textColor="@color/text_primary"/>
+   <TextView android:id="@+id/btnRestartTranslation" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="↻" android:padding="8dp" android:textColor="#FF5B88"/>
+   <TextView android:id="@+id/btnHideControls" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="⌄" android:padding="8dp" android:textColor="@color/text_primary"/>
+  </LinearLayout>
+ </LinearLayout>
+ <TextView android:id="@+id/btnRestoreControls" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" android:text="LiveSub  ⌃" android:padding="6dp" android:textColor="@color/text_primary"/>
+ <TextView android:id="@+id/tvSourceText" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:maxLines="2" android:textColor="#B3E2E8F0" android:textSize="13sp"/>
+ <TextView android:id="@+id/tvSubtitleThai" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:lineSpacingMultiplier="1.15" android:shadowColor="#FF000000" android:shadowDx="0" android:shadowDy="2" android:shadowRadius="6" android:text="พร้อมแปลซับไตเติลสด..." android:textColor="@color/subtitle_yellow" android:textSize="20sp" android:textStyle="bold"/>
+ <TextView android:id="@+id/btnResize" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="end" android:text="⤢" android:textColor="@color/text_secondary" android:padding="8dp"/>
+</LinearLayout>
+FILE_EOFcat << 'FILE_EOF' > app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt
+package com.livesub.glm.overlay
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
+import android.util.TypedValue
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.WindowManager
+import com.livesub.glm.R
+import com.livesub.glm.databinding.OverlaySubtitleBinding
+import com.livesub.glm.storage.SecurePrefs
+import kotlin.math.abs
+
+class FloatingSubtitleOverlay(context: Context, private val prefs: SecurePrefs, private val onCloseRequested: () -> Unit, private val onRestartRequested: () -> Unit) {
+    private val appContext=context.applicationContext
+    private val wm=appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val handler=Handler(Looper.getMainLooper())
+    private var binding:OverlaySubtitleBinding?=null
+    private var lp:WindowManager.LayoutParams?=null
+    private var attached=false
+    private var fontSp=prefs.fontSizeSp
+    private var expanded=true
+    private val autoHide=Runnable { collapse() }
+    private val delay=5000L
+
+    @SuppressLint("ClickableViewAccessibility")
+    fun show() { handler.post {
+        if(attached)return@post
+        val vb=OverlaySubtitleBinding.inflate(LayoutInflater.from(ContextThemeWrapper(appContext,R.style.Theme_LiveSubGLM)))
+        binding=vb
+        val dm=appContext.resources.displayMetrics
+        val w=(dm.widthPixels*.9f).toInt()
+        val p=WindowManager.LayoutParams(w,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply { gravity=Gravity.TOP or Gravity.LEFT; x=(dm.widthPixels-w)/2; y=(dm.heightPixels*.65f).toInt() }
+        lp=p
+        alpha(prefs.overlayAlpha); color(prefs.textColorIndex); font(fontSp)
+        vb.btnBgMinus.setOnClickListener { prefs.overlayAlpha=(prefs.overlayAlpha-15).coerceAtLeast(80); alpha(prefs.overlayAlpha); schedule() }
+        vb.btnBgPlus.setOnClickListener { prefs.overlayAlpha=(prefs.overlayAlpha+15).coerceAtMost(255); alpha(prefs.overlayAlpha); schedule() }
+        vb.btnTextColor.setOnClickListener { prefs.textColorIndex=(prefs.textColorIndex+1)%5; color(prefs.textColorIndex); schedule() }
+        vb.btnRestartTranslation.setOnClickListener { onRestartRequested(); schedule() }
+        vb.btnFontMinus.setOnClickListener { fontSp=(fontSp-2f).coerceAtLeast(14f); prefs.fontSizeSp=fontSp; font(fontSp); schedule() }
+        vb.btnFontPlus.setOnClickListener { fontSp=(fontSp+2f).coerceAtMost(36f); prefs.fontSizeSp=fontSp; font(fontSp); schedule() }
+        vb.btnCloseOverlay.setOnClickListener { onCloseRequested() }
+        vb.btnHideControls.setOnClickListener { collapse() }
+        vb.btnRestoreControls.setOnClickListener { expand() }
+        var dx0=0f; var dy0=0f; var x0=0; var y0=0; var moving=false
+        vb.overlayRoot.setOnTouchListener { _,e -> when(e.actionMasked){
+            MotionEvent.ACTION_DOWN->{dx0=e.rawX;dy0=e.rawY;x0=p.x;y0=p.y;moving=false;schedule();true}
+            MotionEvent.ACTION_MOVE->{val dx=(e.rawX-dx0).toInt();val dy=(e.rawY-dy0).toInt();if(abs(dx)>8||abs(dy)>8)moving=true;if(moving){p.x=x0+dx;p.y=y0+dy;try{wm.updateViewLayout(vb.root,p)}catch(_:Exception){}};true}
+            MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{schedule();true}
+            else->false
+        }}
+        var rx=0f;var ry=0f;var iw=0;var ih=0
+        vb.btnResize.setOnTouchListener { _,e -> when(e.actionMasked){
+            MotionEvent.ACTION_DOWN->{rx=e.rawX;ry=e.rawY;iw=p.width;ih=p.height;handler.removeCallbacks(autoHide);true}
+            MotionEvent.ACTION_MOVE->{p.width=(iw+(e.rawX-rx).toInt()).coerceIn(dp(180),dm.widthPixels);p.height=(ih+(e.rawY-ry).toInt()).coerceIn(dp(100),(dm.heightPixels*.85f).toInt());try{wm.updateViewLayout(vb.root,p)}catch(_:Exception){};true}
+            MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{schedule();true}
+            else->true
+        }}
+        try{wm.addView(vb.root,p);attached=true;schedule()}catch(_:Exception){attached=false}
+    }}
+    private fun collapse(){handler.removeCallbacks(autoHide);binding?.let{it.controlBar.visibility=android.view.View.GONE;it.btnRestoreControls.visibility=android.view.View.VISIBLE};expanded=false}
+    private fun expand(){binding?.let{it.controlBar.visibility=android.view.View.VISIBLE;it.btnRestoreControls.visibility=android.view.View.GONE};expanded=true;schedule()}
+    private fun schedule(){handler.removeCallbacks(autoHide);if(expanded)handler.postDelayed(autoHide,delay)}
+    private fun dp(v:Int)=(v*appContext.resources.displayMetrics.density).toInt()
+    fun updateStatus(t:String){handler.post{binding?.tvStatusBadge?.text=t}}
+    fun updateSourceText(t:String){handler.post{binding?.tvSourceText?.text=t}}
+    fun updateTranslatedText(t:String){handler.post{binding?.tvSubtitleThai?.text=t}}
+    fun hide(){handler.post{handler.removeCallbacks(autoHide);val b=binding;if(attached&&b!=null)try{wm.removeView(b.root)}catch(_:Exception){};attached=false;binding=null;lp=null}}
+    private fun alpha(a:Int){binding?.overlayRoot?.setBackgroundColor(android.graphics.Color.argb(a,13,15,20))}
+    private fun color(i:Int){val cs=intArrayOf(android.graphics.Color.WHITE,android.graphics.Color.YELLOW,android.graphics.Color.CYAN,android.graphics.Color.GREEN,android.graphics.Color.MAGENTA);binding?.tvSubtitleThai?.setTextColor(cs[i.coerceIn(0,4)])}
+    private fun font(s:Float){binding?.let{it.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP,s);it.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP,(s*.65f).coerceAtLeast(11f));it.tvStatusBadge.text="LiveSub (\${s.toInt()}sp)"}}
+}
+FILE_EOF' > app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt
+package com.livesub.glm.overlay
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.view.View
+import android.os.Looper
+import android.util.TypedValue
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.WindowManager
+import com.livesub.glm.R
+import com.livesub.glm.databinding.OverlaySubtitleBinding
+import com.livesub.glm.storage.SecurePrefs
+import kotlin.math.abs
+
+class FloatingSubtitleOverlay(
+    context: Context,
+    private val prefs: SecurePrefs,
+    private val onCloseRequested: () -> Unit,
+    private val onRestartRequested: () -> Unit
+) {
+    private val appContext = context.applicationContext
+    private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var binding: OverlaySubtitleBinding? = null
+    private var layoutParams: WindowManager.LayoutParams? = null
+    private var currentFontSp: Float = prefs.fontSizeSp
+    private var isAttached = false\n    private var initialResizeX=0f; private var initialResizeY=0f; private var initialResizeWidth=0; private var initialResizeHeight=0\n    private val autoHideHandler = Handler(Looper.getMainLooper())\n    private val autoHideControls = Runnable { binding?.controlBar?.visibility = View.GONE }
+
+    @SuppressLint("ClickableViewAccessibility")
+    fun show() {
+        mainHandler.post {
+            if (isAttached) return@post
+            val themedContext = ContextThemeWrapper(appContext, R.style.Theme_LiveSubGLM)
+            val vb = OverlaySubtitleBinding.inflate(LayoutInflater.from(themedContext))
+            binding = vb
+
+            val overlayWidth = (appContext.resources.displayMetrics.widthPixels * 0.90f).toInt()
+            val params = WindowManager.LayoutParams(
+                overlayWidth,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.LEFT
+                x = (appContext.resources.displayMetrics.widthPixels - overlayWidth) / 2
+                y = (appContext.resources.displayMetrics.heightPixels * 0.68f).toInt()
+            }
+            layoutParams = params
+            applyFontSize(currentFontSp)\n            vb.controlBar.setOnClickListener { autoHideHandler.removeCallbacks(autoHideControls); vb.controlBar.visibility = View.VISIBLE; autoHideHandler.postDelayed(autoHideControls, 3000) }\n            vb.overlayRoot.setOnClickListener { vb.controlBar.visibility = View.VISIBLE; autoHideHandler.removeCallbacks(autoHideControls); autoHideHandler.postDelayed(autoHideControls, 3000) }\n            vb.btnResize.setOnTouchListener { _, ev -> val lp = layoutParams ?: return@setOnTouchListener false; when(ev.actionMasked){ MotionEvent.ACTION_DOWN -> { initialResizeX=ev.rawX; initialResizeY=ev.rawY; initialResizeWidth=lp.width; initialResizeHeight=lp.height; true }; MotionEvent.ACTION_MOVE -> { lp.width=(initialResizeWidth+(ev.rawX-initialResizeX).toInt()).coerceIn(180, appContext.resources.displayMetrics.widthPixels); lp.height=(initialResizeHeight+(ev.rawY-initialResizeY).toInt()).coerceAtLeast(120); try { windowManager.updateViewLayout(vb.root,lp) } catch (_:Exception){}; true }; else -> true } }\n            autoHideHandler.postDelayed(autoHideControls, 3000)
+            applyOverlayAlpha(prefs.overlayAlpha)
+            applyTextColor(prefs.textColorIndex)
+            vb.btnBgMinus.setOnClickListener { prefs.overlayAlpha = (prefs.overlayAlpha - 15).coerceAtLeast(80); applyOverlayAlpha(prefs.overlayAlpha) }
+            vb.btnBgPlus.setOnClickListener { prefs.overlayAlpha = (prefs.overlayAlpha + 15).coerceAtMost(255); applyOverlayAlpha(prefs.overlayAlpha) }
+            vb.btnTextColor.setOnClickListener { prefs.textColorIndex = (prefs.textColorIndex + 1) % 5; applyTextColor(prefs.textColorIndex) }
+            vb.btnRestartTranslation.setOnClickListener { onRestartRequested() }
+
+            vb.btnFontMinus.setOnClickListener {
+                currentFontSp = (currentFontSp - 2f).coerceAtLeast(14f)
+                prefs.fontSizeSp = currentFontSp
+                applyFontSize(currentFontSp)
+            }
+            vb.btnFontPlus.setOnClickListener {
+                currentFontSp = (currentFontSp + 2f).coerceAtMost(36f)
+                prefs.fontSizeSp = currentFontSp
+                applyFontSize(currentFontSp)
+            }
+            vb.btnCloseOverlay.setOnClickListener { onCloseRequested() }
+
+            var initialX = 0
+            var initialY = 0
+            var initialTouchX = 0f
+            var initialTouchY = 0f
+            var dragging = false
+
+            vb.overlayRoot.setOnTouchListener { _, event ->
+                val lp = layoutParams ?: return@setOnTouchListener false
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initialX = lp.x
+                        initialY = lp.y
+                        initialTouchX = event.rawX
+                        initialTouchY = event.rawY
+                        dragging = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - initialTouchX).toInt()
+                        val dy = (event.rawY - initialTouchY).toInt()
+                        if (abs(dx) > 6 || abs(dy) > 6) dragging = true
+                        if (dragging && isAttached) {
+                            lp.x = initialX + dx
+                            lp.y = initialY + dy
+                            try {
+                                windowManager.updateViewLayout(vb.root, lp)
+                            } catch (_: Exception) {
+                            }
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        dragging = false
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+            try {
+                windowManager.addView(vb.root, params)
+                isAttached = true
+            } catch (_: Exception) {
+                isAttached = false
+            }
+        }
+    }
+
+    fun updateStatus(statusText: String) {
+        mainHandler.post { binding?.tvStatusBadge?.text = statusText }
+    }
+
+    fun updateSourceText(source: String) {
+        mainHandler.post { binding?.tvSourceText?.text = source }
+    }
+
+    fun updateTranslatedText(thaiText: String) {
+        mainHandler.post { binding?.tvSubtitleThai?.text = thaiText }
+    }
+
+    fun hide() {
+        mainHandler.post {
+            val vb = binding
+            if (isAttached && vb != null) {
+                try {
+                    autoHideHandler.removeCallbacks(autoHideControls)\n                windowManager.removeView(vb.root)
+                } catch (_: Exception) {
+                }
+            }
+            isAttached = false
+            binding = null
+            layoutParams = null
+        }
+    }
+
+    private fun applyOverlayAlpha(alpha: Int) { binding?.overlayRoot?.setBackgroundColor(android.graphics.Color.argb(alpha, 13, 15, 20)) }
+    private fun applyTextColor(index: Int) {
+        val colors = intArrayOf(android.graphics.Color.WHITE, android.graphics.Color.YELLOW, android.graphics.Color.CYAN, android.graphics.Color.GREEN, android.graphics.Color.MAGENTA)
+        binding?.tvSubtitleThai?.setTextColor(colors[index.coerceIn(0, 4)])
+    }
+
+    private fun applyFontSize(sizeSp: Float) {
+        binding?.let { vb ->
+            vb.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+            vb.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP, (sizeSp * 0.65f).coerceAtLeast(11f))
+            vb.tvStatusBadge.text = "LiveSub 18+ (${sizeSp.toInt()}sp)"
+        }
+    }
+}
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/java/com/livesub/glm/service/LiveSubCaptureService.kt)"
+cat << 'FILE_EOF' > app/src/main/java/com/livesub/glm/service/LiveSubCaptureService.kt
+package com.livesub.glm.service
+
+import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import androidx.core.app.NotificationCompat
+import com.livesub.glm.MainActivity
+import com.livesub.glm.R
+import com.livesub.glm.audio.InternalAudioVadRecorder
+import com.livesub.glm.network.GroqWhisperClient
+import com.livesub.glm.network.NumesTranslationClient
+import com.livesub.glm.overlay.FloatingSubtitleOverlay
+import com.livesub.glm.storage.SecurePrefs
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+
+class LiveSubCaptureService : Service() {
+    companion object {
+        const val ACTION_START = "com.livesub.glm.action.START"
+        const val ACTION_STOP = "com.livesub.glm.action.STOP"
+        const val EXTRA_RESULT_CODE = "extra_result_code"
+        const val EXTRA_RESULT_DATA = "extra_result_data"
+        private const val CHANNEL_ID = "livesub_capture_channel"
+        private const val NOTIFICATION_ID = 1018
+
+        private val _isRunning = MutableStateFlow(false)
+        val isRunning: StateFlow<Boolean> = _isRunning
+    }
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private lateinit var prefs: SecurePrefs
+    private val groqClient = GroqWhisperClient()
+    private val numesClient = NumesTranslationClient()
+
+    private var mediaProjection: MediaProjection? = null
+    private var vadRecorder: InternalAudioVadRecorder? = null
+    private var overlay: FloatingSubtitleOverlay? = null
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() = stopCaptureAndSelf()
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        prefs = SecurePrefs(this)
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopCaptureAndSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_START -> {
+                val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
+                val resultData: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA)
+                }
+
+                if (resultCode != Activity.RESULT_OK || resultData == null) {
+                    stopCaptureAndSelf()
+                    return START_NOT_STICKY
+                }
+
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+                startCapturePipeline(resultCode, resultData)
+            }
+        }
+        return START_NOT_STICKY
+    }
+
+    private fun startCapturePipeline(resultCode: Int, resultData: Intent) {
+        vadRecorder?.stop()
+        mediaProjection?.unregisterCallback(projectionCallback)
+        mediaProjection?.stop()
+
+        serviceScope.launch { numesClient.clearHistory() }
+
+        val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val projection = try {
+            mpManager.getMediaProjection(resultCode, resultData)
+        } catch (_: Exception) {
+            null
+        } ?: run {
+            stopCaptureAndSelf()
+            return
+        }
+
+        projection.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+        mediaProjection = projection
+
+        if (overlay == null) {
+            overlay = FloatingSubtitleOverlay(this, prefs, { stopCaptureAndSelf() }, { serviceScope.launch { numesClient.clearHistory(); overlay?.updateSourceText(""); overlay?.updateTranslatedText("เริ่มบริบทการแปลใหม่แล้ว"); overlay?.updateStatus("รีเซ็ตคำแปลแล้ว") } })
+        }
+        overlay?.show()
+        overlay?.updateStatus("กำลังฟังเสียงวิดีโอ (ZH/JA)...")
+        overlay?.updateTranslatedText("พร้อมแปลซับไตเติลสด เปิดวิดีโอ MP4 ได้เลย")
+
+        vadRecorder = InternalAudioVadRecorder(
+            mediaProjection = projection,
+            scope = serviceScope,
+            onWavChunkReady = { wavBytes -> processAudioChunk(wavBytes) },
+            onError = { errMsg -> overlay?.updateStatus("Audio Error: $errMsg") }
+        ).also { it.start() }
+
+        _isRunning.value = true
+    }
+
+    private suspend fun processAudioChunk(wavBytes: ByteArray) {
+        overlay?.updateStatus("กำลังถอดเสียง...")
+        val sttResult = groqClient.transcribeZhJa(wavBytes, prefs.groqApiKey)
+
+        sttResult.fold(
+            onSuccess = { cleanText ->
+                if (cleanText.isNullOrBlank()) {
+                    overlay?.updateStatus("กำลังฟังเสียงวิดีโอ (ZH/JA)...")
+                    return
+                }
+                overlay?.updateSourceText(cleanText)
+                overlay?.updateStatus("กำลังแปล GLM 18+...")
+
+                numesClient.streamTranslateToThai(
+                    sourceText = cleanText,
+                    numesApiKey = prefs.numesApiKey,
+                    modelName = prefs.modelName,
+                    onStreamingUpdate = { partialThai -> overlay?.updateTranslatedText(partialThai) }
+                ).onFailure { err ->
+                    overlay?.updateStatus("แปลผิดพลาด: ${err.message?.take(45)}")
+                }.onSuccess {
+                    overlay?.updateStatus("LiveSub 18+ พร้อมฟังต่อ")
+                }
+            },
+            onFailure = { err ->
+                overlay?.updateStatus("STT ผิดพลาด: ${err.message?.take(45)}")
+            }
+        )
+    }
+
+    private fun stopCaptureAndSelf() {
+        _isRunning.value = false
+        vadRecorder?.stop()
+        vadRecorder = null
+        try {
+            mediaProjection?.unregisterCallback(projectionCallback)
+            mediaProjection?.stop()
+        } catch (_: Exception) {
+        }
+        mediaProjection = null
+        overlay?.hide()
+        overlay = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        stopCaptureAndSelf()
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "LiveSub Audio Capture",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(): Notification {
+        val pendingOpen = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = Intent(this, LiveSubCaptureService::class.java).apply { action = ACTION_STOP }
+        val pendingStop = PendingIntent.getService(
+            this, 1, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("LiveSub GLM 18+ กำลังทำงาน")
+            .setContentText("กำลังดักจับเสียงวิดีโอเพื่อแปลซับไตเติลไทยสด")
+            .setContentIntent(pendingOpen)
+            .setOngoing(true)
+            .addAction(0, "หยุดแปล", pendingStop)
+            .build()
+    }
+}
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/java/com/livesub/glm/MainActivity.kt)"
+cat << 'FILE_EOF' > app/src/main/java/com/livesub/glm/MainActivity.kt
+package com.livesub.glm
+
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.livesub.glm.databinding.ActivityMainBinding
+import com.livesub.glm.network.NumesTranslationClient
+import com.livesub.glm.service.LiveSubCaptureService
+import com.livesub.glm.storage.SecurePrefs
+import kotlinx.coroutines.launch
+
+class MainActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var prefs: SecurePrefs
+
+    private val runtimePermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val audioGranted = results[Manifest.permission.RECORD_AUDIO] == true ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (audioGranted) requestOverlayThenProjection()
+        else toast("จำเป็นต้องอนุญาตสิทธิ์บันทึกเสียงเพื่อใช้ AudioPlaybackCapture")
+    }
+
+    private val overlaySettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (Settings.canDrawOverlays(this)) launchMediaProjectionPrompt()
+        else toast("กรุณาเปิดสิทธิ์แสดงผลทับแอปอื่น (Floating Overlay)")
+    }
+
+    private val mediaProjectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val serviceIntent = Intent(this, LiveSubCaptureService::class.java).apply {
+                action = LiveSubCaptureService.ACTION_START
+                putExtra(LiveSubCaptureService.EXTRA_RESULT_CODE, result.resultCode)
+                putExtra(LiveSubCaptureService.EXTRA_RESULT_DATA, result.data)
+            }
+            ContextCompat.startForegroundService(this, serviceIntent)
+            toast("เริ่มระบบแปลซับสดแล้ว สลับไปเปิดวิดีโอ MP4 ได้เลย")
+        } else {
+            toast("ยกเลิกการแชร์เสียงหน้าจอ")
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        prefs = SecurePrefs(this)
+        binding.etGroqKey.setText(prefs.groqApiKey)
+        binding.etNumesKey.setText(prefs.numesApiKey)
+        binding.etModelName.setText(prefs.modelName)
+        val numesModelOptions = listOf(
+            "dealignai/glm-5.3-flash-uncensored-fp8:free",
+            "dealignai/deepseek-v4.1-flash-uncensored-fp8:free",
+            "dealignai/glm-5.3-uncensored-fp8:free",
+            "uniboshi/kimi-k3-abliterated-v1:free",
+            "deepseek/deepseek-v4.1-flash:free",
+            "z-ai/glm-5.3-flash:free",
+            "moonshotai/kimi-k3.1-pro:free"
+        )
+        binding.etModelName.setAdapter(android.widget.ArrayAdapter(
+            this, android.R.layout.simple_dropdown_item_1line, numesModelOptions
+        ))
+        binding.etModelName.setOnClickListener { binding.etModelName.showDropDown() }
+        binding.etModelName.setOnFocusChangeListener { _, focused ->
+            if (focused) binding.etModelName.post { binding.etModelName.showDropDown() }
+        }
+
+        binding.btnStartCapture.setOnClickListener {
+            if (saveAndValidateInputs()) checkPermissionsAndStart()
+        }
+
+        binding.btnStopCapture.setOnClickListener {
+            startService(Intent(this, LiveSubCaptureService::class.java).apply {
+                action = LiveSubCaptureService.ACTION_STOP
+            })
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                LiveSubCaptureService.isRunning.collect { running ->
+                    binding.btnStartCapture.isEnabled = !running
+                    binding.btnStopCapture.isEnabled = running
+                    binding.tvServiceStatus.text = if (running) {
+                        "สถานะ: กำลังดักเสียง Media และแปลซับลอยตัวอยู่"
+                    } else {
+                        "สถานะ: พร้อมทำงาน (หยุดอยู่)"
+                    }
+                }
+            }
+        }
+    }
+
+    private fun saveAndValidateInputs(): Boolean {
+        val groq = binding.etGroqKey.text?.toString()?.trim().orEmpty()
+        val numes = binding.etNumesKey.text?.toString()?.trim().orEmpty()
+        val model = binding.etModelName.text?.toString()?.trim()
+            .takeUnless { it.isNullOrEmpty() } ?: NumesTranslationClient.DEFAULT_MODEL
+
+        if (groq.isEmpty()) {
+            binding.etGroqKey.error = "กรุณาใส่ Groq API Key (gsk_...)"
+            return false
+        }
+        if (numes.isEmpty()) {
+            binding.etNumesKey.error = "กรุณาใส่ Numes.ai API Key"
+            return false
+        }
+
+        prefs.groqApiKey = groq
+        prefs.numesApiKey = numes
+        prefs.modelName = model
+        binding.etModelName.setText(model)
+        return true
+    }
+
+    private fun checkPermissionsAndStart() {
+        val needed = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.RECORD_AUDIO)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            needed.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (needed.isNotEmpty()) runtimePermissionLauncher.launch(needed.toTypedArray())
+        else requestOverlayThenProjection()
+    }
+
+    private fun requestOverlayThenProjection() {
+        if (!Settings.canDrawOverlays(this)) {
+            overlaySettingsLauncher.launch(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            )
+        } else {
+            launchMediaProjectionPrompt()
+        }
+    }
+
+    private fun launchMediaProjectionPrompt() {
+        val mpManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        mediaProjectionLauncher.launch(mpManager.createScreenCaptureIntent())
+    }
+
+    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+}
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/values/strings.xml)"
+cat << 'FILE_EOF' > app/src/main/res/values/strings.xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LiveSub GLM 18+</string>
+</resources>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/values/colors.xml)"
+cat << 'FILE_EOF' > app/src/main/res/values/colors.xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#101218</color>
+    <color name="surface_dark">#1C202B</color>
+    <color name="primary_accent">#FF4D79</color>
+    <color name="secondary_accent">#00E5FF</color>
+    <color name="text_primary">#F8FAFC</color>
+    <color name="text_secondary">#94A3B8</color>
+    <color name="subtitle_yellow">#FFE66D</color>
+</resources>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/values/themes.xml)"
+cat << 'FILE_EOF' > app/src/main/res/values/themes.xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LiveSubGLM" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/primary_accent</item>
+        <item name="colorSecondary">@color/secondary_accent</item>
+        <item name="android:statusBarColor">@color/bg_dark</item>
+        <item name="android:navigationBarColor">@color/bg_dark</item>
+        <item name="android:windowBackground">@color/bg_dark</item>
+    </style>
+</resources>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/drawable/bg_overlay_card.xml)"
+cat << 'FILE_EOF' > app/src/main/res/drawable/bg_overlay_card.xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#CC0D0F14" />
+    <corners android:radius="14dp" />
+    <stroke android:width="1dp" android:color="#4DFF4D79" />
+</shape>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/drawable/bg_overlay_btn.xml)"
+cat << 'FILE_EOF' > app/src/main/res/drawable/bg_overlay_btn.xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#33FFFFFF" />
+    <corners android:radius="8dp" />
+</shape>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/drawable/ic_launcher_background.xml)"
+cat << 'FILE_EOF' > app/src/main/res/drawable/ic_launcher_background.xml
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#161923" />
+</shape>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/drawable/ic_launcher_foreground.xml)"
+cat << 'FILE_EOF' > app/src/main/res/drawable/ic_launcher_foreground.xml
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF4D79"
+        android:pathData="M26,34h56c3.3,0 6,2.7 6,6v28c0,3.3 -2.7,6 -6,6H48l-12,10v-10H26c-3.3,0 -6,-2.7 -6,-6V40c0,-3.3 2.7,-6 6,-6z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,48h40v4H34zM34,56h28v4H34z" />
+</vector>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml)"
+cat << 'FILE_EOF' > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+FILE_EOF
+
+mkdir -p "$(dirname app/src/main/res/layout/overlay_subtitle.xml)"
+cat << 'FILE_EOF' > app/src/main/res/layout/overlay_subtitle.xml
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/overlayRoot" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/bg_overlay_card" android:orientation="vertical" android:padding="8dp">
  <LinearLayout android:id="@+id/controlBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
   <TextView android:id="@+id/tvStatusBadge" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="LiveSub" android:textColor="@color/text_secondary" android:textSize="10sp" android:maxLines="1"/>
