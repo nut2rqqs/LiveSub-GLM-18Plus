@@ -75,11 +75,11 @@ vs = vs.replace(
 )
 vs = vs.replace(
     "                    val isVoiceFrame = rms >= VAD_RMS_THRESHOLD\n",
-    "                    val isVoiceFrame = rms >= VAD_RMS_THRESHOLD\n                    meterFrames++\n                    if (meterFrames >= 50) { meterFrames = 0; if (!isSpeaking) onDebug(\"Audio monitor · RMS \${rms.toInt()} / threshold \${VAD_RMS_THRESHOLD.toInt()}\") else onDebug(\"VAD กำลังจับเสียง · RMS \${rms.toInt()}\") }\n"
+    "                    val isVoiceFrame = rms >= VAD_RMS_THRESHOLD\n                    meterFrames++\n                    if (meterFrames >= 50) { meterFrames = 0; if (!isSpeaking) onDebug(\"Audio monitor · RMS ${rms.toInt()} / threshold ${VAD_RMS_THRESHOLD.toInt()}\") else onDebug(\"VAD กำลังจับเสียง · RMS ${rms.toInt()}\") }\n"
 )
 vs = vs.replace(
     "                                wavChannel.send(wavBytes)",
-    "                                onDebug(\"VAD ส่ง segment · \${wavBytes.size / 1024} KB\")\n                                wavChannel.send(wavBytes)"
+    "                                onDebug(\"VAD ส่ง segment · ${wavBytes.size / 1024} KB\")\n                                wavChannel.send(wavBytes)"
 )
 v.write_text(vs)
 
