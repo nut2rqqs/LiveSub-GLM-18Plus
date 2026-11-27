@@ -4327,3 +4327,14 @@ if p.exists():
     s=p.read_text().replace('ยืนยัน Key สำเร็จ (ไม่เรียกโมเดล)', 'HTTP 200/2xx — ยืนยัน Key สำเร็จ (ไม่เรียกโมเดล)')
     p.write_text(s)
 PY
+
+# Resize grip: increase touch area and visual affordance
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/res/layout/overlay_subtitle.xml')
+if p.exists():
+ s=p.read_text()
+ s=s.replace('android:id="@+id/btnResize" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="end" android:text="⤢" android:textColor="@color/text_secondary" android:padding="6dp"', 'android:id="@+id/btnResize" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="end" android:gravity="center" android:text="⤢" android:textColor="@color/text_secondary" android:padding="12dp"')
+ s=s.replace('android:id="@+id/btnResize" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="end" android:text="⤢" android:textColor="@color/text_secondary" android:padding="4dp"', 'android:id="@+id/btnResize" android:layout_width="48dp" android:layout_height="48dp" android:layout_gravity="end" android:gravity="center" android:text="⤢" android:textColor="@color/text_secondary" android:padding="12dp"')
+ p.write_text(s)
+PY
