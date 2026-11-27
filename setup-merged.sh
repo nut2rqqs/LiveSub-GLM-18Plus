@@ -3260,52 +3260,13 @@ s=s.replace('                    autoHideHandler.removeCallbacks(autoHideControl
 p.write_text(s)
 PY
 
-# Build #17 compile repair: normalize generated source declarations and remove malformed overlay fragments
+# Build repair: normalize remaining non-overlay source repairs only; overlay is emitted clean above.
 python3 - <<'PY'
 from pathlib import Path
-import re
 p=Path('app/src/main/java/com/livesub/glm/audio/InternalAudioVadRecorder.kt')
-s=p.read_text()
-s=s.replace('growth.\\\\n    private val wavChannel', 'growth.\\n    private val wavChannel')
-s=s.replace('growth.\\n    private val wavChannel', 'growth.\n    private val wavChannel')
-if 'private val wavChannel' not in s: s=s.replace('private var consumerJob: Job? = null', 'private var consumerJob: Job? = null\\n    private val wavChannel = Channel<ByteArray>(capacity = 12)')
+s=p.read_text().replace('growth.\\\\n    private val wavChannel', 'growth.\\n    private val wavChannel')
 p.write_text(s)
 p=Path('app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt')
-s=p.read_text().replace('\\\\n        val payload', '\\n        val payload').replace('\\n        val payload','\n        val payload')
-p.write_text(s)
-p=Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
-s=p.read_text()
-s=s.replace('false\\\\n    private var initialResizeX', 'false\\n    private var initialResizeX')
-s=s.replace('false\\n    private var initialResizeX', 'false\n    private var initialResizeX')
-s=s.replace('initialResizeHeight=0\\\\n    private val autoHideHandler', 'initialResizeHeight=0\\n    private val autoHideHandler')
-s=s.replace('initialResizeHeight=0\\n    private val autoHideHandler', 'initialResizeHeight=0\n    private val autoHideHandler')
-s=s.replace('Handler(Looper.getMainLooper())\\\\n    private val autoHideControls', 'Handler(Looper.getMainLooper())\\n    private val autoHideControls')
-s=s.replace('Handler(Looper.getMainLooper())\\n    private val autoHideControls', 'Handler(Looper.getMainLooper())\n    private val autoHideControls')
-# Remove declarations if still malformed and simplify binding initialization line containing unsupported controls
-s=re.sub(r'    private var isAttached = false.*?\\n.*?autoHideControls.*?\\n', '    private var isAttached = false\\n', s, flags=re.S)
-s=s.replace('\\n', '\\n')
-# Repair malformed escaped code fragments in on-show block by removing auto-hide/resize handlers, retain font-size initialization
-s=re.sub(r'\\\\n\s*vb\.controlBar.*?autoHideHandler\.postDelayed\(autoHideControls, 3000\)', '', s)
-s=re.sub(r'\\\\n\s*autoHideHandler\.removeCallbacks\(autoHideControls\)', '', s)
-p.write_text(s)
-PY
-
-# Build #18 repair: decode escaped structural newlines in generated overlay Kotlin.
-python3 - <<'PY'
-from pathlib import Path
-p=Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
-s=p.read_text()
-s=s.replace('\\\\n', '\\n')
-p.write_text(s)
-PY
-
-# Build #19 targeted source normalization for overlay structural escapes.
-python3 - <<'PY'
-from pathlib import Path
-p = Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
-s = p.read_text()
-# Convert literal escaped line breaks left in Kotlin source (both escape-depth variants).
-s = s.replace('\\\\n', '\\n')
-s = s.replace('\\n', '\n')
+s=p.read_text().replace('\\\\n        val payload', '\\n        val payload')
 p.write_text(s)
 PY
