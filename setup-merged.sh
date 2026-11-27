@@ -4231,3 +4231,5 @@ class FloatingSubtitleOverlay(context: Context, private val prefs: SecurePrefs, 
  private fun applyFont(s:Float){binding?.let{it.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP,s);it.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP,(s*.65f).coerceAtLeast(11f));it.tvStatusBadge.text="LiveSub (${s.toInt()}sp)"}}
 }
 SUBTITLE_KOTLIN_EOF
+
+# CI rebuild trigger: validate latest overlay redesign APK.
