@@ -3289,3 +3289,12 @@ s=re.sub(r'\\\\n\s*vb\.controlBar.*?autoHideHandler\.postDelayed\(autoHideContro
 s=re.sub(r'\\\\n\s*autoHideHandler\.removeCallbacks\(autoHideControls\)', '', s)
 p.write_text(s)
 PY
+
+# Build #18 repair: decode escaped structural newlines in generated overlay Kotlin.
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt')
+s=p.read_text()
+s=s.replace('\\\\n', '\\n')
+p.write_text(s)
+PY
