@@ -3131,10 +3131,8 @@ package com.livesub.glm.network
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 data class ApiTestResult(val ok: Boolean, val code: Int, val message: String)
@@ -3146,31 +3144,32 @@ object ApiConnectionTester {
         .build()
 
     suspend fun testGroq(key: String): ApiTestResult = withContext(Dispatchers.IO) {
-        request("https://api.groq.com/openai/v1/models", key, null)
+        request("https://api.groq.com/openai/v1/models", key)
     }
 
+    // Authentication-only test: GET /key is documented by Numes and does not invoke inference.
     suspend fun testNumes(key: String, model: String): ApiTestResult = withContext(Dispatchers.IO) {
-        val safeModel = model.replace("\\", "\\\\").replace("\"", "\\\"")\n        val payload = """{"model":"$safeModel","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":5,"stream":false}"""
-        request("https://api.numes.ai/api/v1/chat/completions", key, payload)
+        request("https://api.numes.ai/api/v1/key", key)
     }
 
-    private fun request(url: String, key: String, json: String?): ApiTestResult {
+    private fun request(url: String, key: String): ApiTestResult {
         if (key.isBlank()) return ApiTestResult(false, 0, "API Key ว่าง")
+        val trimmed = key.trim()
+        if (url.contains("numes.ai") && !trimmed.startsWith("sk-")) {
+            return ApiTestResult(false, 0, "Numes ต้องใช้ Inference Key (sk-)")
+        }
         return try {
-            val builder = Request.Builder().url(url).header("Authorization", "Bearer ${key.trim()}")
-            if (json == null) builder.get()
-            else builder.post(json.toRequestBody("application/json".toMediaType()))
-            client.newCall(builder.build()).execute().use { response ->
-                val code = response.code
+            val req = Request.Builder().url(url)
+                .header("Authorization", "Bearer $trimmed")
+                .get().build()
+            client.newCall(req).execute().use { response ->
                 val body = response.body?.string().orEmpty()
-                if (response.isSuccessful) ApiTestResult(true, code, "เชื่อมต่อสำเร็จ")
-                else {
-                    val msg = when (code) {
-                        401, 403 -> "Key ไม่ถูกต้องหรือไม่มีสิทธิ์"
-                        429 -> "Rate limit / quota"
-                        else -> "HTTP error"
-                    }
-                    ApiTestResult(false, code, msg)
+                when (response.code) {
+                    in 200..299 -> ApiTestResult(true, response.code, "ยืนยัน Key สำเร็จ (ไม่เรียกโมเดล)")
+                    401 -> ApiTestResult(false, 401, "Key ไม่ถูกต้อง/ปิดใช้งาน/หมดอายุ/ผิดประเภท")
+                    403 -> ApiTestResult(false, 403, "สิทธิ์หรือบัญชีไม่อนุญาต")
+                    429 -> ApiTestResult(false, 429, "Rate limit")
+                    else -> ApiTestResult(false, response.code, body.take(120).ifBlank { "HTTP error" })
                 }
             }
         } catch (e: Exception) {
