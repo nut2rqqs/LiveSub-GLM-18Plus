@@ -746,6 +746,8 @@ class SecurePrefs(context: Context) {
         private const val KEY_NUMES = "numes_api_key"
         private const val KEY_MODEL = "numes_model_name"
         private const val KEY_FONT_SP = "overlay_font_sp"
+        private const val KEY_OVERLAY_ALPHA = "overlay_alpha"
+        private const val KEY_TEXT_COLOR = "overlay_text_color"
     }
 
     private val prefs: SharedPreferences = try {
@@ -778,6 +780,14 @@ class SecurePrefs(context: Context) {
     var fontSizeSp: Float
         get() = prefs.getFloat(KEY_FONT_SP, 20f).coerceIn(14f, 36f)
         set(value) = prefs.edit().putFloat(KEY_FONT_SP, value.coerceIn(14f, 36f)).apply()
+
+    var overlayAlpha: Int
+        get() = prefs.getInt(KEY_OVERLAY_ALPHA, 204).coerceIn(80, 255)
+        set(value) = prefs.edit().putInt(KEY_OVERLAY_ALPHA, value.coerceIn(80, 255)).apply()
+
+    var textColorIndex: Int
+        get() = prefs.getInt(KEY_TEXT_COLOR, 0).coerceIn(0, 4)
+        set(value) = prefs.edit().putInt(KEY_TEXT_COLOR, value.coerceIn(0, 4)).apply()
 }
 FILE_EOF
 
@@ -804,7 +814,8 @@ import kotlin.math.abs
 class FloatingSubtitleOverlay(
     context: Context,
     private val prefs: SecurePrefs,
-    private val onCloseRequested: () -> Unit
+    private val onCloseRequested: () -> Unit,
+    private val onRestartRequested: () -> Unit
 ) {
     private val appContext = context.applicationContext
     private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -830,12 +841,18 @@ class FloatingSubtitleOverlay(
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                x = 0
+                gravity = Gravity.TOP or Gravity.LEFT
+                x = (appContext.resources.displayMetrics.widthPixels - overlayWidth) / 2
                 y = (appContext.resources.displayMetrics.heightPixels * 0.68f).toInt()
             }
             layoutParams = params
             applyFontSize(currentFontSp)
+            applyOverlayAlpha(prefs.overlayAlpha)
+            applyTextColor(prefs.textColorIndex)
+            vb.btnBgMinus.setOnClickListener { prefs.overlayAlpha = (prefs.overlayAlpha - 15).coerceAtLeast(80); applyOverlayAlpha(prefs.overlayAlpha) }
+            vb.btnBgPlus.setOnClickListener { prefs.overlayAlpha = (prefs.overlayAlpha + 15).coerceAtMost(255); applyOverlayAlpha(prefs.overlayAlpha) }
+            vb.btnTextColor.setOnClickListener { prefs.textColorIndex = (prefs.textColorIndex + 1) % 5; applyTextColor(prefs.textColorIndex) }
+            vb.btnRestartTranslation.setOnClickListener { onRestartRequested() }
 
             vb.btnFontMinus.setOnClickListener {
                 currentFontSp = (currentFontSp - 2f).coerceAtLeast(14f)
@@ -922,6 +939,12 @@ class FloatingSubtitleOverlay(
             binding = null
             layoutParams = null
         }
+    }
+
+    private fun applyOverlayAlpha(alpha: Int) { binding?.overlayRoot?.setBackgroundColor(android.graphics.Color.argb(alpha, 13, 15, 20)) }
+    private fun applyTextColor(index: Int) {
+        val colors = intArrayOf(android.graphics.Color.WHITE, android.graphics.Color.YELLOW, android.graphics.Color.CYAN, android.graphics.Color.GREEN, android.graphics.Color.MAGENTA)
+        binding?.tvSubtitleThai?.setTextColor(colors[index.coerceIn(0, 4)])
     }
 
     private fun applyFontSize(sizeSp: Float) {
@@ -1053,7 +1076,7 @@ class LiveSubCaptureService : Service() {
         mediaProjection = projection
 
         if (overlay == null) {
-            overlay = FloatingSubtitleOverlay(this, prefs) { stopCaptureAndSelf() }
+            overlay = FloatingSubtitleOverlay(this, prefs, { stopCaptureAndSelf() }, { serviceScope.launch { numesClient.clearHistory(); overlay?.updateSourceText(""); overlay?.updateTranslatedText("เริ่มบริบทการแปลใหม่แล้ว"); overlay?.updateStatus("รีเซ็ตคำแปลแล้ว") } })
         }
         overlay?.show()
         overlay?.updateStatus("กำลังฟังเสียงวิดีโอ (ZH/JA)...")
@@ -1442,8 +1465,9 @@ cat << 'FILE_EOF' > app/src/main/res/layout/overlay_subtitle.xml
             android:textColor="@color/text_secondary"
             android:textSize="11sp" />
 
-        <TextView
-            android:id="@+id/btnFontMinus"
+        <TextView android:id="@+id/btnBgMinus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="4dp" android:background="@drawable/bg_overlay_btn" android:paddingHorizontal="7dp" android:paddingVertical="3dp" android:text="BG−" android:textColor="@color/text_primary" android:textSize="11sp" />
+        <TextView android:id="@+id/btnBgPlus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="4dp" android:background="@drawable/bg_overlay_btn" android:paddingHorizontal="7dp" android:paddingVertical="3dp" android:text="BG+" android:textColor="@color/text_primary" android:textSize="11sp" />
+        <TextView android:id="@+id/btnFontMinus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="6dp"
@@ -1468,6 +1492,8 @@ cat << 'FILE_EOF' > app/src/main/res/layout/overlay_subtitle.xml
             android:textSize="12sp"
             android:textStyle="bold" />
 
+        <TextView android:id="@+id/btnTextColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="4dp" android:background="@drawable/bg_overlay_btn" android:paddingHorizontal="7dp" android:paddingVertical="3dp" android:text="●" android:textColor="#FF5B88" android:textSize="12sp" />
+        <TextView android:id="@+id/btnRestartTranslation" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginEnd="4dp" android:background="@drawable/bg_overlay_btn" android:paddingHorizontal="7dp" android:paddingVertical="3dp" android:text="↻" android:textColor="#FF5B88" android:textSize="12sp" />
         <TextView
             android:id="@+id/btnCloseOverlay"
             android:layout_width="wrap_content"
