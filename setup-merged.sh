@@ -1621,4 +1621,85 @@ cat << 'FILE_EOF' > app/src/main/res/layout/activity_main.xml
 </ScrollView>
 FILE_EOF
 
+
+# Build #6: API connection diagnostics
+mkdir -p app/src/main/java/com/livesub/glm/network
+cat << 'FILE_EOF' > app/src/main/java/com/livesub/glm/network/ApiConnectionTester.kt
+package com.livesub.glm.network
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
+
+data class ApiTestResult(val ok: Boolean, val code: Int, val message: String)
+
+object ApiConnectionTester {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    suspend fun testGroq(key: String): ApiTestResult = withContext(Dispatchers.IO) {
+        request("https://api.groq.com/openai/v1/models", key, null)
+    }
+
+    suspend fun testNumes(key: String, model: String): ApiTestResult = withContext(Dispatchers.IO) {
+        val payload = """{"model":"$model","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":5,"stream":false}"""
+        request("https://api.numes.ai/api/v1/chat/completions", key, payload)
+    }
+
+    private fun request(url: String, key: String, json: String?): ApiTestResult {
+        if (key.isBlank()) return ApiTestResult(false, 0, "API Key ว่าง")
+        return try {
+            val builder = Request.Builder().url(url).header("Authorization", "Bearer ${key.trim()}")
+            if (json == null) builder.get()
+            else builder.post(json.toRequestBody("application/json".toMediaType()))
+            client.newCall(builder.build()).execute().use { response ->
+                val code = response.code
+                val body = response.body?.string().orEmpty()
+                if (response.isSuccessful) ApiTestResult(true, code, "เชื่อมต่อสำเร็จ")
+                else {
+                    val msg = when (code) {
+                        401, 403 -> "Key ไม่ถูกต้องหรือไม่มีสิทธิ์"
+                        429 -> "Rate limit / quota"
+                        else -> "HTTP error"
+                    }
+                    ApiTestResult(false, code, msg)
+                }
+            }
+        } catch (e: Exception) {
+            ApiTestResult(false, -1, e.javaClass.simpleName + ": " + (e.message ?: "network error").take(100))
+        }
+    }
+}
+FILE_EOF
+
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/MainActivity.kt')
+s=p.read_text()
+s=s.replace('import com.livesub.glm.network.NumesTranslationClient','import com.livesub.glm.network.NumesTranslationClient\nimport com.livesub.glm.network.ApiConnectionTester')
+s=s.replace('        binding.btnStartCapture.setOnClickListener {','''        binding.btnTestApis.setOnClickListener {
+            val groq = binding.etGroqKey.text?.toString()?.trim().orEmpty()
+            val numes = binding.etNumesKey.text?.toString()?.trim().orEmpty()
+            val model = binding.etModelName.text?.toString()?.trim().orEmpty()
+                .ifBlank { NumesTranslationClient.DEFAULT_MODEL }
+            binding.tvApiTestResults.text = "กำลังทดสอบ..."
+            lifecycleScope.launch {
+                val g = ApiConnectionTester.testGroq(groq)
+                val n = ApiConnectionTester.testNumes(numes, model)
+                binding.tvApiTestResults.text =
+                    "Groq: ${if (g.ok) "CONNECTED" else "FAILED"} (HTTP ${g.code}) — ${g.message}\n" +
+                    "Numes: ${if (n.ok) "CONNECTED" else "FAILED"} (HTTP ${n.code}) — ${n.message}"
+            }
+        }
+
+        binding.btnStartCapture.setOnClickListener {''')
+p.write_text(s)
+PY
+
 echo "Files written. GitHub Actions workflow will build APK."
