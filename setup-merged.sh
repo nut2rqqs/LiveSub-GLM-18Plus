@@ -4376,3 +4376,51 @@ s=s.replace('        binding.etModelName.setText(prefs.modelName)', '        bin
 s=s.replace('        prefs.groqApiKey = groq', '        prefs.groqApiKey = groq\\n        prefs.geminiApiKey = binding.etGeminiKey.text?.toString()?.trim().orEmpty()\\n        prefs.geminiEnabled = binding.switchGeminiEnabled.isChecked')
 p.write_text(s)
 PY
+
+# Build #9: selectable translation routing (GLM primary / optional Gemini)
+python3 - <<'PY'
+from pathlib import Path
+p=Path('app/src/main/java/com/livesub/glm/service/LiveSubCaptureService.kt')
+s=p.read_text()
+old='''                overlay?.updateStatus("กำลังแปล GLM 18+...")
+
+                numesClient.streamTranslateToThai(
+                    sourceText = cleanText,
+                    numesApiKey = prefs.numesApiKey,
+                    modelName = prefs.modelName,
+                    onStreamingUpdate = { partialThai -> overlay?.updateTranslatedText(partialThai) }
+                ).onFailure { err ->
+                    overlay?.updateStatus("แปลผิดพลาด: ${err.message?.take(45)}")
+                }.onSuccess {
+                    overlay?.updateStatus("LiveSub 18+ พร้อมฟังต่อ")
+                }'''
+new='''                if (prefs.geminiEnabled) {
+                    overlay?.updateStatus("กำลังแปล Gemini...")
+                    GeminiClient().translate(cleanText, prefs.geminiApiKey).fold(
+                        onSuccess = { thai ->
+                            overlay?.updateTranslatedText(thai)
+                            overlay?.updateStatus("Gemini พร้อมฟังต่อ")
+                        },
+                        onFailure = { err ->
+                            overlay?.updateStatus("Gemini Error: ${err.message?.take(60)}")
+                        }
+                    )
+                } else {
+                    overlay?.updateStatus("กำลังแปล GLM...")
+                    numesClient.streamTranslateToThai(
+                        sourceText = cleanText,
+                        numesApiKey = prefs.numesApiKey,
+                        modelName = prefs.modelName,
+                        onStreamingUpdate = { partialThai -> overlay?.updateTranslatedText(partialThai) }
+                    ).onFailure { err ->
+                        overlay?.updateStatus("แปลผิดพลาด: ${err.message?.take(45)}")
+                    }.onSuccess {
+                        overlay?.updateStatus("GLM พร้อมฟังต่อ")
+                    }
+                }'''
+if old not in s: raise SystemExit('translation routing anchor not found')
+s=s.replace(old,new,1)
+if 'import com.livesub.glm.network.GeminiClient' not in s:
+    s=s.replace('import com.livesub.glm.network.NumesTranslationClient','import com.livesub.glm.network.NumesTranslationClient\\nimport com.livesub.glm.network.GeminiClient')
+p.write_text(s)
+PY
