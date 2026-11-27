@@ -4151,3 +4151,83 @@ s=p.read_text()
 s=s.replace(r'.replace("\\", "\\\\").replace("\"", "\\\"")\n        val payload', r'.replace("\\", "\\\\").replace("\"", "\\\"")' + '\n' + '        val payload')
 p.write_text(s)
 PY
+
+# Subtitle layout polish patch (final override, kept in bootstrap source)
+cat << 'SUBTITLE_LAYOUT_EOF' > app/src/main/res/layout/overlay_subtitle.xml
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/overlayRoot" android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/bg_overlay_card" android:orientation="vertical" android:padding="10dp">
+ <LinearLayout android:id="@+id/controlBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+   <TextView android:id="@+id/tvStatusBadge" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="LiveSub" android:textColor="@color/text_secondary" android:textSize="11sp"/>
+   <TextView android:id="@+id/btnBgMinus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="◐−" android:padding="7dp" android:textColor="@color/text_primary"/><TextView android:id="@+id/btnBgPlus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="◐+" android:padding="7dp" android:textColor="@color/text_primary"/><TextView android:id="@+id/btnTextColor" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="●" android:padding="7dp" android:textColor="#FF5B88"/><TextView android:id="@+id/btnCloseOverlay" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="✕" android:padding="7dp" android:textColor="#FF6B8B"/>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:orientation="horizontal">
+   <TextView android:id="@+id/btnFontMinus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="A−" android:padding="7dp" android:textColor="@color/text_primary"/><TextView android:id="@+id/btnFontPlus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="A+" android:padding="7dp" android:textColor="@color/text_primary"/><TextView android:id="@+id/btnRestartTranslation" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="↻" android:padding="7dp" android:textColor="#FF5B88"/><TextView android:id="@+id/btnHideControls" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="⌄" android:padding="7dp" android:textColor="@color/text_primary"/>
+  </LinearLayout>
+ </LinearLayout>
+ <TextView android:id="@+id/btnRestoreControls" android:layout_width="wrap_content" android:layout_height="wrap_content" android:visibility="gone" android:text="LiveSub ⌃" android:padding="8dp" android:textColor="@color/text_primary"/>
+ <TextView android:id="@+id/tvSourceText" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:maxLines="2" android:lineSpacingMultiplier="1.05" android:textColor="#B3E2E8F0" android:textSize="13sp"/>
+ <TextView android:id="@+id/tvSubtitleThai" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:lineSpacingMultiplier="1.10" android:shadowColor="#FF000000" android:shadowDx="0" android:shadowDy="2" android:shadowRadius="6" android:text="พร้อมแปลซับไตเติลสด..." android:textColor="@color/subtitle_yellow" android:textSize="20sp" android:textStyle="bold"/>
+ <TextView android:id="@+id/btnResize" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="end" android:text="⤢" android:textColor="@color/text_secondary" android:padding="6dp"/>
+</LinearLayout>
+SUBTITLE_LAYOUT_EOF
+cat << 'SUBTITLE_KOTLIN_EOF' > app/src/main/java/com/livesub/glm/overlay/FloatingSubtitleOverlay.kt
+package com.livesub.glm.overlay
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
+import android.util.TypedValue
+import android.view.ContextThemeWrapper
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.WindowManager
+import android.view.View
+import com.livesub.glm.R
+import com.livesub.glm.databinding.OverlaySubtitleBinding
+import com.livesub.glm.storage.SecurePrefs
+import kotlin.math.abs
+
+class FloatingSubtitleOverlay(context: Context, private val prefs: SecurePrefs, private val onCloseRequested: () -> Unit, private val onRestartRequested: () -> Unit) {
+ private val appContext=context.applicationContext
+ private val wm=appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+ private val handler=Handler(Looper.getMainLooper())
+ private var binding:OverlaySubtitleBinding?=null
+ private var lp:WindowManager.LayoutParams?=null
+ private var attached=false
+ private var expanded=true
+ private var fontSp=prefs.fontSizeSp
+ private val autoHide=Runnable { collapse() }
+ private val hideDelay=5000L
+ @SuppressLint("ClickableViewAccessibility") fun show(){ handler.post {
+  if(attached)return@post
+  val vb=OverlaySubtitleBinding.inflate(LayoutInflater.from(ContextThemeWrapper(appContext,R.style.Theme_LiveSubGLM)));binding=vb
+  val dm=appContext.resources.displayMetrics;val w=(dm.widthPixels*.90f).toInt()
+  val p=WindowManager.LayoutParams(w,WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{gravity=Gravity.TOP or Gravity.LEFT;x=(dm.widthPixels-w)/2;y=(dm.heightPixels*.65f).toInt()};lp=p
+  applyAlpha(prefs.overlayAlpha);applyColor(prefs.textColorIndex);applyFont(fontSp)
+  vb.btnBgMinus.setOnClickListener{prefs.overlayAlpha=(prefs.overlayAlpha-15).coerceAtLeast(80);applyAlpha(prefs.overlayAlpha);schedule()};vb.btnBgPlus.setOnClickListener{prefs.overlayAlpha=(prefs.overlayAlpha+15).coerceAtMost(255);applyAlpha(prefs.overlayAlpha);schedule()}
+  vb.btnTextColor.setOnClickListener{prefs.textColorIndex=(prefs.textColorIndex+1)%5;applyColor(prefs.textColorIndex);schedule()};vb.btnRestartTranslation.setOnClickListener{onRestartRequested();schedule()}
+  vb.btnFontMinus.setOnClickListener{fontSp=(fontSp-2f).coerceAtLeast(14f);prefs.fontSizeSp=fontSp;applyFont(fontSp);schedule()};vb.btnFontPlus.setOnClickListener{fontSp=(fontSp+2f).coerceAtMost(36f);prefs.fontSizeSp=fontSp;applyFont(fontSp);schedule()};vb.btnCloseOverlay.setOnClickListener{onCloseRequested()}
+  vb.btnHideControls.setOnClickListener{collapse()};vb.btnRestoreControls.setOnClickListener{expand()}
+  var tx=0f;var ty=0f;var sx=0;var sy=0;var dragging=false
+  vb.overlayRoot.setOnTouchListener{_,e->when(e.actionMasked){MotionEvent.ACTION_DOWN->{tx=e.rawX;ty=e.rawY;sx=p.x;sy=p.y;dragging=false;schedule();true};MotionEvent.ACTION_MOVE->{val dx=(e.rawX-tx).toInt();val dy=(e.rawY-ty).toInt();if(abs(dx)>8||abs(dy)>8)dragging=true;if(dragging){p.x=sx+dx;p.y=sy+dy;try{wm.updateViewLayout(vb.root,p)}catch(_:Exception){}};true};MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{schedule();true};else->false}}
+  var rx=0f;var ry=0f;var iw=0;var ih=0
+  vb.btnResize.setOnTouchListener{_,e->when(e.actionMasked){MotionEvent.ACTION_DOWN->{rx=e.rawX;ry=e.rawY;iw=p.width;ih=p.height;handler.removeCallbacks(autoHide);true};MotionEvent.ACTION_MOVE->{p.width=(iw+(e.rawX-rx).toInt()).coerceIn(dp(180),dm.widthPixels);p.height=(ih+(e.rawY-ry).toInt()).coerceIn(dp(100),(dm.heightPixels*.85f).toInt());try{wm.updateViewLayout(vb.root,p)}catch(_:Exception){};true};MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{schedule();true};else->true}}
+  try{wm.addView(vb.root,p);attached=true;schedule()}catch(_:Exception){attached=false}
+ }}
+ private fun collapse(){handler.removeCallbacks(autoHide);binding?.let{it.controlBar.visibility=View.GONE;it.btnRestoreControls.visibility=View.VISIBLE};expanded=false}
+ private fun expand(){binding?.let{it.controlBar.visibility=View.VISIBLE;it.btnRestoreControls.visibility=View.GONE};expanded=true;schedule()}
+ private fun schedule(){handler.removeCallbacks(autoHide);if(expanded)handler.postDelayed(autoHide,hideDelay)}
+ private fun dp(v:Int)=(v*appContext.resources.displayMetrics.density).toInt()
+ fun updateStatus(t:String){handler.post{binding?.tvStatusBadge?.text=t}}
+ fun updateSourceText(t:String){handler.post{binding?.tvSourceText?.text=t}}
+ fun updateTranslatedText(t:String){handler.post{binding?.tvSubtitleThai?.text=t}}
+ fun hide(){handler.post{handler.removeCallbacks(autoHide);val b=binding;if(attached&&b!=null)try{wm.removeView(b.root)}catch(_:Exception){};attached=false;binding=null;lp=null}}
+ private fun applyAlpha(a:Int){binding?.overlayRoot?.setBackgroundColor(android.graphics.Color.argb(a,13,15,20))}
+ private fun applyColor(i:Int){val c=intArrayOf(android.graphics.Color.WHITE,android.graphics.Color.YELLOW,android.graphics.Color.CYAN,android.graphics.Color.GREEN,android.graphics.Color.MAGENTA);binding?.tvSubtitleThai?.setTextColor(c[i.coerceIn(0,4)])}
+ private fun applyFont(s:Float){binding?.let{it.tvSubtitleThai.setTextSize(TypedValue.COMPLEX_UNIT_SP,s);it.tvSourceText.setTextSize(TypedValue.COMPLEX_UNIT_SP,(s*.65f).coerceAtLeast(11f);it.tvStatusBadge.text="LiveSub (${s.toInt()}sp)"}}
+}
+SUBTITLE_KOTLIN_EOF
