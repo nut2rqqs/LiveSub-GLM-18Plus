@@ -180,8 +180,14 @@ picker = '''        val modelAdapter = NoFilterArrayAdapter(this)
             binding.tilModel.helperText = "กำลังโหลดรายชื่อโมเดล..."
             NumesModelCatalog.fetch(key).onSuccess { ids ->
                 val current = binding.etModelName.text?.toString()?.trim().orEmpty()
-                modelAdapter.setItems(NumesModelCatalog.merge(listOf(current), ids))
-                binding.tilModel.helperText = "โหลดโมเดลจาก Numes แล้ว ${ids.size} รายการ"
+                val uncensored = ids.filter { it.contains("uncensored", ignoreCase = true) }
+                val shown = uncensored.ifEmpty { ids }
+                modelAdapter.setItems(NumesModelCatalog.merge(listOf(current), shown))
+                binding.tilModel.helperText = if (uncensored.isEmpty()) {
+                    "โหลดโมเดลจาก Numes แล้ว ${ids.size} รายการ (ไม่พบรุ่น uncensored จึงแสดงทั้งหมด)"
+                } else {
+                    "แสดงเฉพาะรุ่น uncensored ${uncensored.size} จาก ${ids.size} รายการ"
+                }
             }.onFailure {
                 binding.tilModel.helperText = "โหลดรายชื่อไม่ได้ (${it.message?.take(40)}) ใช้รายการสำรองหรือพิมพ์ชื่อเองได้"
             }
