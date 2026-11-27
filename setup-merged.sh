@@ -1227,6 +1227,22 @@ class MainActivity : AppCompatActivity() {
         binding.etGroqKey.setText(prefs.groqApiKey)
         binding.etNumesKey.setText(prefs.numesApiKey)
         binding.etModelName.setText(prefs.modelName)
+        val numesModelOptions = listOf(
+            "dealignai/glm-5.3-flash-uncensored-fp8:free",
+            "dealignai/deepseek-v4.1-flash-uncensored-fp8:free",
+            "dealignai/glm-5.3-uncensored-fp8:free",
+            "uniboshi/kimi-k3-abliterated-v1:free",
+            "deepseek/deepseek-v4.1-flash:free",
+            "z-ai/glm-5.3-flash:free",
+            "moonshotai/kimi-k3.1-pro:free"
+        )
+        binding.etModelName.setAdapter(android.widget.ArrayAdapter(
+            this, android.R.layout.simple_dropdown_item_1line, numesModelOptions
+        ))
+        binding.etModelName.setOnClickListener { binding.etModelName.showDropDown() }
+        binding.etModelName.setOnFocusChangeListener { _, focused ->
+            if (focused) binding.etModelName.post { binding.etModelName.showDropDown() }
+        }
 
         binding.btnStartCapture.setOnClickListener {
             if (saveAndValidateInputs()) checkPermissionsAndStart()
@@ -1573,12 +1589,13 @@ cat << 'FILE_EOF' > app/src/main/res/layout/activity_main.xml
             android:layout_marginTop="12dp"
             android:hint="Translation Model Name">
 
-            <com.google.android.material.textfield.TextInputEditText
+            <AutoCompleteTextView
                 android:id="@+id/etModelName"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:inputType="text"
-                android:singleLine="true" />
+                android:singleLine="true"
+                android:completionThreshold="0" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <LinearLayout
